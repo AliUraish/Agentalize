@@ -14,7 +14,7 @@ export function formatDateTime(iso: string): string {
   })
 }
 
-export function formatRelative(iso: string, now = new Date('2026-08-13T21:10:00Z')): string {
+export function formatRelative(iso: string, now = new Date()): string {
   const diff = now.getTime() - new Date(iso).getTime()
   const min = Math.round(diff / 60000)
   if (min < 1) return 'just now'
