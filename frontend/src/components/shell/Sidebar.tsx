@@ -17,7 +17,8 @@ import {
   Wifi,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { PROJECT } from '../../mock/dataset'
+import { useApiQuery } from '../../hooks/useApiQuery'
+import type { HealthResponse, Page } from '../../lib/api'
 
 interface NavItem {
   to: string
@@ -36,14 +37,14 @@ const GROUPS: { label: string; items: NavItem[] }[] = [
       { to: '/agents', label: 'Agents', icon: Bot },
       { to: '/runs', label: 'Runs & Traces', icon: Activity },
       { to: '/evaluations', label: 'Evaluations', icon: Gauge },
-      { to: '/feedback', label: 'Feedback', icon: MessageSquare, badge: 3, badgeTone: 'warning' },
+      { to: '/feedback', label: 'Feedback', icon: MessageSquare, badgeTone: 'warning' },
     ],
   },
   {
     label: 'Improve',
     items: [
-      { to: '/incidents', label: 'Incidents', icon: TriangleAlert, badge: 3, badgeTone: 'critical' },
-      { to: '/investigations', label: 'Investigations', icon: Microscope, badge: 1, badgeTone: 'warning' },
+      { to: '/incidents', label: 'Incidents', icon: TriangleAlert, badgeTone: 'critical' },
+      { to: '/investigations', label: 'Investigations', icon: Microscope, badgeTone: 'warning' },
       { to: '/memory', label: 'Memory', icon: Database },
       { to: '/deployments', label: 'Deployments', icon: Rocket },
     ],
@@ -61,6 +62,17 @@ export function Sidebar({
   collapsed: boolean
   onToggle: () => void
 }) {
+  const feedback = useApiQuery<Page<unknown>>('/feedback?limit=1', 10_000)
+  const incidents = useApiQuery<Page<{ status?: string }>>('/incidents?limit=200', 10_000)
+  const investigations = useApiQuery<Page<unknown>>('/investigations?limit=1', 10_000)
+  const health = useApiQuery<HealthResponse>('/health', 5_000)
+  const badges: Record<string, number | undefined> = {
+    '/feedback': feedback.data?.count,
+    '/incidents': incidents.data?.items.filter((item) => !['resolved', 'dismissed'].includes(item.status || '')).length,
+    '/investigations': investigations.data?.count,
+  }
+  const connected = health.data?.status === 'ok' && health.data.database === 'connected'
+
   return (
     <aside
       className="flex shrink-0 flex-col border-r border-(--color-line) bg-(--color-surface-1) transition-[width] duration-200"
@@ -71,17 +83,17 @@ export function Sidebar({
         <button
           type="button"
           className="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-1.5 py-1.5 text-left transition-colors hover:bg-white/5"
-          title={`${PROJECT.organizationName} · ${PROJECT.projectName}`}
+          title="Agentalize Demo · MongoDB Atlas"
         >
           <Mark />
           {!collapsed && (
             <>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[13px] leading-4 font-semibold">
-                  {PROJECT.projectName}
+                  Agentalize Demo
                 </span>
                 <span className="block truncate text-[11px] text-(--color-ink-3)">
-                  {PROJECT.organizationName}
+                  MongoDB Atlas
                 </span>
               </span>
               <ChevronDown className="size-3.5 shrink-0 text-(--color-ink-3)" />
@@ -99,7 +111,9 @@ export function Sidebar({
               </div>
             )}
             <ul className="flex flex-col gap-0.5">
-              {group.items.map((item) => (
+              {group.items.map((item) => {
+                const badge = badges[item.to]
+                return (
                 <li key={item.to}>
                   <NavLink
                     to={item.to}
@@ -120,7 +134,7 @@ export function Sidebar({
                         )}
                         <item.icon className="size-4 shrink-0" />
                         {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
-                        {!collapsed && item.badge !== undefined && (
+                        {!collapsed && badge !== undefined && badge > 0 && (
                           <span
                             className="tabular rounded px-1 py-px text-[10px] font-semibold"
                             style={{
@@ -134,14 +148,15 @@ export function Sidebar({
                                   : 'var(--color-warning-soft)',
                             }}
                           >
-                            {item.badge}
+                            {badge}
                           </span>
                         )}
                       </>
                     )}
                   </NavLink>
                 </li>
-              ))}
+                )
+              })}
             </ul>
           </div>
         ))}
@@ -150,12 +165,12 @@ export function Sidebar({
       <div className="border-t border-(--color-line) p-2">
         <div
           className={`flex items-center gap-2 rounded-md px-2 py-1.5 ${collapsed ? 'justify-center' : ''}`}
-          title="SDK connected · last trace 4s ago"
+          title={connected ? 'Backend and MongoDB connected' : 'Backend reconnecting'}
         >
-          <Wifi className="size-3.5 shrink-0 text-(--color-good)" />
+          <Wifi className={`size-3.5 shrink-0 ${connected ? 'text-(--color-good)' : 'text-(--color-warning)'}`} />
           {!collapsed && (
             <span className="min-w-0 flex-1 truncate text-[11px] text-(--color-ink-2)">
-              SDK healthy · 4s ago
+              {connected ? 'Backend + MongoDB healthy' : 'Backend reconnecting'}
             </span>
           )}
         </div>
