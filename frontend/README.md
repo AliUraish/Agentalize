@@ -10,19 +10,23 @@ gate, and production verification confirms the recovery and writes it back to
 memory.
 
 ```bash
+# Start the FastAPI backend first on http://127.0.0.1:8000.
 npm install
 npm run dev      # http://localhost:5173
 npm run build    # tsc -b && vite build
 ```
 
+Copy `.env.example` to `.env` only when you need to override the local API or
+demo tenant. The default `/api/v1` URL is proxied to the local backend.
+
 ## What is built
 
 | Route | Spec | State |
 |---|---|---|
-| `/overview` | §15.2 | Built — KPIs, agent health with deployment markers, needs-attention, evaluation + feedback breakdowns, active investigations, verified fixes, agents table |
-| `/incidents` | §15.8 | Built — the six default views, full column set |
-| `/incidents/:id` | §15.9 | Built — sticky header, summary strip, all six tabs |
-| `/memory` | §15.11 | Built — NL search, structured filters, similarity explanations, retrieval control |
+| `/overview` | §15.2 | Live — MongoDB-backed KPIs, incidents, evaluations, feedback, deployments, investigations and agents |
+| `/incidents` | §15.8 | Live — filters and incident rows refresh every 10 seconds |
+| `/incidents/:id` | §15.9 | Live — incident header, production summary and backend timeline |
+| `/memory` | §15.11 | Live — backend keyword/vector-search endpoint with structured filters |
 | everything else | §13 | Declared in nav, renders an honest "not part of the demo slice" state |
 
 The incident detail tabs map 1:1 to §15.9: **Overview**, **Evidence**,
@@ -60,19 +64,19 @@ src/
   screens/             one file per route; incident tabs in screens/incident/
 ```
 
-## The backend seam
+## Backend connection
 
-Two things replace the mock. Nothing else changes.
+`src/lib/api.ts` is the shared typed client. Dashboard requests are parallelized
+and the main views poll the FastAPI read APIs every 10 seconds. Vite proxies
+`/api` to `http://127.0.0.1:8000`, so provider and database credentials never
+enter the browser bundle.
 
-### 1. Read APIs (§11)
-
-The screens currently import from `src/mock/dataset.ts`. Swap those imports for
-fetches against the §11 read APIs — the exported constants already match the
-document shapes in `src/types/domain.ts`.
+The static dataset remains only for presentation-only workspaces whose event
+contract has not yet been aligned with the backend.
 
 ### 2. Investigation stream (§11 realtime)
 
-`GET /v1/investigations/:id/events` — SSE, one `RunEvent` JSON object per `data:`
+The planned investigation stream uses SSE, one `RunEvent` JSON object per `data:`
 frame, `t` in ms since investigation start.
 
 ```jsonc
@@ -95,9 +99,9 @@ contradicting), **action** (bounded tool call + the permission it consumed), and
 Per §11, stream concise action / evidence / result / next step — **not** hidden
 chain-of-thought.
 
-To point the UI at a live orchestrator, flip the source in
-`useInvestigationEngine(investigationId, 'live')`. `vite.config.ts` proxies `/api`
-to `127.0.0.1:8000`; point it at `/v1` for the control-plane API.
+The current FastAPI backend exposes a project-wide `/api/v1/events` stream. The
+mock investigation replay remains isolated until that stream is adapted to the
+per-investigation event union in `src/types/events.ts`.
 
 ## Design system
 
