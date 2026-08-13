@@ -1,11 +1,13 @@
-import { useMemo, useState } from 'react'
+import { useDeferredValue, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Ban, CircleCheck, Database, FlaskConical, Search, TriangleAlert } from 'lucide-react'
-import { MEMORIES } from '../mock/dataset'
 import { Panel, Button, EmptyState, SectionLabel } from '../components/ui/Primitives'
 import { Badge, VerifiedBadge } from '../components/ui/Badge'
 import { formatDateTime } from '../lib/format'
 import type { Memory } from '../types/domain'
+import { useApiQuery } from '../hooks/useApiQuery'
+import type { Page } from '../lib/api'
+import { mapMemory, type BackendMemory } from '../lib/liveData'
 
 const OUTCOME_TONE = {
   resolved: 'good',
@@ -27,16 +29,22 @@ export function MemoryExplorer() {
   const [query, setQuery] = useState('stale cached tool result after a refactor')
   const [outcome, setOutcome] = useState<string>('all')
   const [verifiedOnly, setVerifiedOnly] = useState(true)
+  const deferredQuery = useDeferredValue(query)
+  const searchPath = `/memories/search?query=${encodeURIComponent(deferredQuery)}&limit=50${outcome === 'all' ? '' : `&outcome=${encodeURIComponent(outcome)}`}`
+  const memoryQuery = useApiQuery<Page<BackendMemory>>(searchPath, 10_000)
+  const memories = useMemo(
+    () => (memoryQuery.data?.items || []).map(mapMemory),
+    [memoryQuery.data],
+  )
 
   const results = useMemo(() => {
-    return MEMORIES.filter((m) => {
+    return memories.filter((m) => {
       if (verifiedOnly && !m.verified) return false
-      if (outcome !== 'all' && m.outcome !== outcome) return false
       return true
     }).sort((a, b) => b.score - a.score)
-  }, [outcome, verifiedOnly])
+  }, [memories, verifiedOnly])
 
-  const selected = MEMORIES.find((m) => m.memoryId === focus) ?? results[0] ?? null
+  const selected = memories.find((m) => m.memoryId === focus) ?? results[0] ?? null
 
   return (
     <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 p-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
@@ -85,14 +93,20 @@ export function MemoryExplorer() {
 
         <Panel
           title="Results"
-          hint={`${results.length} memories · ranked by similarity, recency and verified outcome`}
+          hint={memoryQuery.loading ? 'Searching MongoDB…' : `${results.length} live memories · ranked by similarity, recency and verified outcome`}
           bodyClassName="divide-y divide-(--color-line) overflow-y-auto"
         >
-          {results.length === 0 ? (
+          {memoryQuery.error && !memoryQuery.data ? (
+            <EmptyState
+              icon={TriangleAlert}
+              title="Memory search unavailable"
+              detail={memoryQuery.error.message}
+            />
+          ) : results.length === 0 ? (
             <EmptyState
               icon={Database}
               title="No memories match"
-              detail="Clear a filter to widen the search."
+              detail="No stored production memory matches this search and filter yet."
               action={
                 <Button variant="secondary" onClick={() => setVerifiedOnly(false)}>
                   Include unverified
