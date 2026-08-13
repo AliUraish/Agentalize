@@ -188,7 +188,7 @@ The model receives only a bounded incident summary, redacted repository evidence
 The investigator is read-only by default:
 
 ```dotenv
-DEMO_REPOSITORY_PATH=../Agentalize_sdk
+DEMO_REPOSITORY_PATH=../agentalize-sdk
 ALLOW_REPOSITORY_WRITES=false
 ```
 
@@ -209,4 +209,3 @@ Tests cover authentication, JSON and OTLP ingestion, idempotency, exception inci
 - Incident correlation is deterministic fingerprinting; semantic incident clustering can be added later.
 - Production deployment verification and real Git pull requests remain represented in the architecture but are not required for the local demo.
 - Repository modifications and test command execution remain disabled until sandboxing is implemented.
-
