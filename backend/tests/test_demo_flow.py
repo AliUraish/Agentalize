@@ -151,3 +151,40 @@ def test_memory_search_prefers_verified_match(client, ui_headers):
     ).json()
     assert results["items"][0]["title"] == "Stale account balance cache"
     assert results["items"][0]["verified"] is True
+
+
+def test_signals_arriving_before_trace_are_reconciled(client, sdk_headers, ui_headers):
+    evaluation = client.post(
+        "/api/v1/evaluations",
+        headers=sdk_headers,
+        json={
+            "target": {"type": "run", "id": "run-test-001"},
+            "agent_id": "support-agent",
+            "metric": "answer_correctness",
+            "evaluator_type": "application",
+            "evaluator_name": "inline_sdk_evaluator",
+            "passed": False,
+            "score": 0,
+            "reason": "Evaluation completed before the trace exporter flushed.",
+        },
+    )
+    assert evaluation.status_code == 201
+    feedback = client.post(
+        "/api/v1/feedback",
+        headers=sdk_headers,
+        json={
+            "target": {"type": "run", "id": "run-test-001"},
+            "agent_id": "support-agent",
+            "rating": 1,
+            "sentiment": "negative",
+            "category": "incorrect_answer",
+        },
+    )
+    assert feedback.status_code == 201
+    assert client.post(
+        "/api/v1/ingest/traces", headers=sdk_headers, json=trace_payload()
+    ).status_code == 202
+
+    run = client.get("/api/v1/runs/run-test-001", headers=ui_headers).json()
+    assert run["evaluationRollup"] == {"status": "failed", "passed": 0, "failed": 2}
+    assert run["feedbackCount"] == 1
