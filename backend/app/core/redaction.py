@@ -5,7 +5,6 @@ from typing import Any
 SECRET_PATTERNS = [
     re.compile(r"(?i)(api[_-]?key|token|secret|password)\s*[:=]\s*[^\s,;]+"),
     re.compile(r"\bsk-[A-Za-z0-9_-]{12,}\b"),
-    re.compile(r"\b[A-Fa-f0-9]{32,}\b"),
 ]
 
 
@@ -30,4 +29,3 @@ def redact_value(value: Any) -> Any:
                 redacted[key] = redact_value(item)
         return redacted
     return value
-
