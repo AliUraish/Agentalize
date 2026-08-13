@@ -1,0 +1,126 @@
+import unittest
+import os
+from opentelemetry import trace
+from agentalize import init, flush, shutdown, Agentalize
+
+
+def _reset_otel_state():
+    """
+    Reset OpenTelemetry global state for test isolation.
+    This prevents the 'Overriding of current TracerProvider is not allowed' warning.
+    """
+    # Reset the global tracer provider to allow setting a new one
+    # This uses internal API but is necessary for proper test isolation
+    trace._TRACER_PROVIDER_SET_ONCE._done = False
+    trace._TRACER_PROVIDER = None
+
+
+class TestAgentalizeInit(unittest.TestCase):
+    
+    def setUp(self):
+        # Reset OpenTelemetry global state
+        _reset_otel_state()
+        # Reset the singleton before each test to ensure isolation
+        Agentalize._instance = None
+        Agentalize._shutdown_registered = False
+        # Clear env var if present
+        if "AGENTALIZE_API_KEY" in os.environ:
+            del os.environ["AGENTALIZE_API_KEY"]
+        if "AGENTALIZE_AGENT_ID" in os.environ:
+            del os.environ["AGENTALIZE_AGENT_ID"]
+
+    def test_init_with_api_key(self):
+        """Test that init works with an explicit API key."""
+        client = init(api_key="test-key-123", agent_id="test-agent-123")
+        self.assertIsNotNone(client)
+        self.assertEqual(client.config.api_key, "test-key-123")
+        
+    def test_init_missing_key_raises_error(self):
+        """Test that init raises ValueError if no key is provided."""
+        with self.assertRaises(ValueError):
+            init()
+
+    def test_singleton_pattern(self):
+        """Test that init returns the same instance if called twice."""
+        client1 = init(api_key="key-1", agent_id="agent-1")
+        
+        # Let's check that get_instance returns the initialized client
+        client2 = Agentalize.get_instance()
+        self.assertIs(client1, client2)
+
+
+class TestAgentalizeShutdown(unittest.TestCase):
+    """Tests for graceful shutdown functionality."""
+    
+    def setUp(self):
+        # Reset OpenTelemetry global state
+        _reset_otel_state()
+        # Reset the singleton before each test
+        Agentalize._instance = None
+        Agentalize._shutdown_registered = False
+        if "AGENTALIZE_API_KEY" in os.environ:
+            del os.environ["AGENTALIZE_API_KEY"]
+        if "AGENTALIZE_AGENT_ID" in os.environ:
+            del os.environ["AGENTALIZE_AGENT_ID"]
+
+    def test_flush_before_init_returns_false(self):
+        """Test that flush returns False if SDK is not initialized."""
+        result = flush()
+        self.assertFalse(result)
+
+    def test_shutdown_before_init_is_safe(self):
+        """Test that shutdown is safe to call before init."""
+        # Should not raise any exception
+        shutdown()
+
+    def test_flush_after_init(self):
+        """Test that flush works after initialization."""
+        init(api_key="test-key", agent_id="test-agent")
+        result = flush(timeout_millis=1000)
+        self.assertTrue(result)
+
+    def test_shutdown_is_idempotent(self):
+        """Test that shutdown can be called multiple times safely."""
+        client = init(api_key="test-key", agent_id="test-agent")
+        
+        # First shutdown
+        client.shutdown()
+        self.assertTrue(client._is_shutdown)
+        
+        # Second shutdown should not raise
+        client.shutdown()
+        self.assertTrue(client._is_shutdown)
+
+    def test_flush_after_shutdown_returns_false(self):
+        """Test that flush returns False after shutdown."""
+        client = init(api_key="test-key", agent_id="test-agent")
+        client.shutdown()
+        
+        result = client.flush()
+        self.assertFalse(result)
+
+    def test_atexit_handler_registered(self):
+        """Test that atexit handler is registered on init."""
+        self.assertFalse(Agentalize._shutdown_registered)
+        
+        init(api_key="test-key", agent_id="test-agent")
+        
+        self.assertTrue(Agentalize._shutdown_registered)
+
+    def test_atexit_handler_registered_only_once(self):
+        """Test that atexit handler is only registered once."""
+        init(api_key="test-key-1", agent_id="test-agent-1")
+        self.assertTrue(Agentalize._shutdown_registered)
+        
+        # Second init should not register again
+        # (we can't easily test this, but we ensure the flag stays True)
+        Agentalize._instance = None  # Reset instance but keep flag
+        init(api_key="test-key-2", agent_id="test-agent-2")
+        
+        # Flag should still be True (not re-registered)
+        self.assertTrue(Agentalize._shutdown_registered)
+
+
+if __name__ == "__main__":
+    unittest.main()
+

@@ -1,0 +1,29 @@
+[project]
+name = "agentalize-backend"
+version = "0.1.0"
+description = "Local demo backend for the Agentalize continuous agent improvement platform"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.116,<1",
+  "httpx>=0.28,<1",
+  "opentelemetry-proto>=1.36,<2",
+  "pydantic-settings>=2.10,<3",
+  "pymongo>=4.13,<5",
+  "uvicorn[standard]>=0.35,<1",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.4,<9",
+  "pytest-asyncio>=1.1,<2",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
