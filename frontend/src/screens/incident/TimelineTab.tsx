@@ -1,92 +1,85 @@
-import {
-  Bot,
-  CircleCheck,
-  Gauge,
-  GitPullRequest,
-  MessageSquare,
-  Rocket,
-  Settings,
-  User,
-  UserCheck,
-} from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
-import { INCIDENT_TIMELINE } from '../../mock/dataset'
-import { Panel } from '../../components/ui/Primitives'
+import { Bot, CircleCheck, Clock, GitBranch, Radio, Wrench } from 'lucide-react'
+import { EmptyState, Panel } from '../../components/ui/Primitives'
+import { useApiQuery } from '../../hooks/useApiQuery'
+import type { Page } from '../../lib/api'
 import { formatDateTime } from '../../lib/format'
-import type { TimelineEntry } from '../../types/domain'
 
-const KIND_ICON: Record<TimelineEntry['kind'], LucideIcon> = {
-  signal: Gauge,
-  agent_step: Bot,
-  comment: MessageSquare,
-  approval: UserCheck,
-  pr: GitPullRequest,
-  deployment: Rocket,
-  verification: CircleCheck,
-  status: Settings,
+interface TimelineItem {
+  timelineType: string
+  createdAt: string
+  updatedAt?: string
+  summary?: string
+  claim?: string
+  status?: string
+  stage?: string
+  action?: string
+  incidentId?: string
+  investigationId?: string
+  remediationId?: string
+  signalId?: string
+  [key: string]: unknown
 }
 
-const ACTOR_COLOR: Record<TimelineEntry['actorType'], string> = {
-  agent: 'var(--color-ai)',
-  human: 'var(--color-accent)',
-  system: 'var(--color-ink-3)',
-}
+export function TimelineTab({ incidentId }: { incidentId: string }) {
+  const query = useApiQuery<Page<TimelineItem>>(
+    `/incidents/${encodeURIComponent(incidentId)}/timeline`,
+    10_000,
+  )
 
-export function TimelineTab() {
+  if (query.loading && !query.data) {
+    return <div className="p-4"><Panel><EmptyState icon={Clock} title="Loading timeline" detail="Reading investigation events from MongoDB…" /></Panel></div>
+  }
+
+  if (query.error && !query.data) {
+    return <div className="p-4"><Panel><EmptyState icon={Clock} title="Timeline unavailable" detail={query.error.message} /></Panel></div>
+  }
+
+  const items = query.data?.items || []
   return (
     <div className="p-4">
-      <Panel
-        title="Immutable history"
-        hint="Every transition records actor, timestamp, reason and evidence. Entries are append-only."
-      >
-        <ol className="p-4">
-          {INCIDENT_TIMELINE.map((e, i) => {
-            const Icon = KIND_ICON[e.kind]
-            const color = ACTOR_COLOR[e.actorType]
-            const last = i === INCIDENT_TIMELINE.length - 1
-            return (
-              <li key={e.entryId} className="relative flex gap-3 pb-4 last:pb-0">
-                {!last && (
-                  <span className="absolute top-7 bottom-0 left-[13px] w-px bg-(--color-line-strong)" />
-                )}
-                <span
-                  className="relative z-10 mt-0.5 flex size-[27px] shrink-0 items-center justify-center rounded-full border bg-(--color-surface-1)"
-                  style={{ borderColor: `${color}66` }}
-                >
-                  <Icon className="size-3.5" style={{ color }} />
-                </span>
-
-                <div className="min-w-0 flex-1 pb-1">
-                  <div className="flex flex-wrap items-baseline gap-x-2">
-                    <span className="text-[13px] font-medium">{e.action}</span>
-                    <span
-                      className="flex items-center gap-1 text-[11px]"
-                      style={{ color }}
-                      title={`${e.actorType} actor`}
-                    >
-                      {e.actorType === 'agent' ? (
-                        <Bot className="size-2.5" />
-                      ) : e.actorType === 'human' ? (
-                        <User className="size-2.5" />
-                      ) : (
-                        <Settings className="size-2.5" />
-                      )}
-                      {e.actor}
-                    </span>
-                    <span
-                      className="tabular ml-auto shrink-0 text-[11px] text-(--color-ink-3)"
-                      title={e.at}
-                    >
-                      {formatDateTime(e.at)}
-                    </span>
+      <Panel title="Incident timeline" hint={`${items.length} live backend records`} bodyClassName="p-4">
+        {items.length === 0 ? (
+          <EmptyState icon={Clock} title="No timeline events" detail="Investigation steps and remediation records will appear here." />
+        ) : (
+          <ol className="relative ml-2 border-l border-(--color-line-strong)">
+            {items.map((item, index) => {
+              const Icon = iconFor(item.timelineType)
+              return (
+                <li key={`${item.timelineType}-${item.createdAt}-${index}`} className="relative pb-5 pl-6 last:pb-0">
+                  <span className="absolute -left-3 flex size-6 items-center justify-center rounded-full border border-(--color-line-strong) bg-(--color-surface-2)">
+                    <Icon className="size-3 text-(--color-ai)" />
+                  </span>
+                  <div className="flex flex-wrap items-baseline gap-2">
+                    <span className="text-[13px] font-medium">{labelFor(item)}</span>
+                    {item.status && <span className="rounded bg-white/6 px-1.5 py-0.5 font-mono text-[10px] text-(--color-ink-3)">{item.status}</span>}
+                    <time className="tabular ml-auto text-[10px] text-(--color-ink-3)">{formatDateTime(item.createdAt)}</time>
                   </div>
-                  <p className="mt-0.5 text-[12px] text-(--color-ink-2)">{e.detail}</p>
-                </div>
-              </li>
-            )
-          })}
-        </ol>
+                  <p className="mt-1 text-[11px] leading-relaxed text-(--color-ink-2)">{detailFor(item)}</p>
+                </li>
+              )
+            })}
+          </ol>
+        )}
       </Panel>
     </div>
   )
+}
+
+function iconFor(type: string) {
+  if (type === 'investigations' || type === 'agentSteps') return Bot
+  if (type === 'remediations') return Wrench
+  if (type === 'verifications') return CircleCheck
+  if (type === 'approvals') return GitBranch
+  return Radio
+}
+
+function labelFor(item: TimelineItem) {
+  return item.summary || item.action || item.claim || item.stage || item.timelineType.replace(/([A-Z])/g, ' $1')
+}
+
+function detailFor(item: TimelineItem) {
+  if (item.investigationId) return `Investigation ${item.investigationId}`
+  if (item.remediationId) return `Remediation ${item.remediationId}`
+  if (item.signalId) return `Signal ${item.signalId}`
+  return `Stored ${item.timelineType} record`
 }
