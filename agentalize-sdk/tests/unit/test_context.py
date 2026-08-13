@@ -6,10 +6,12 @@ from agentalize.context import (
     set_user,
     set_session,
     set_conversation,
+    set_run,
     set_metadata,
     get_user,
     get_session,
     get_conversation,
+    get_run,
     get_metadata,
     get_context_attributes,
     with_context,
@@ -26,6 +28,7 @@ class TestContextManager(unittest.TestCase):
         set_user(None)
         set_session(None)
         set_conversation(None)
+        set_run(None)
         set_metadata(None)
 
     def test_context_manager_sets_user_id(self):
@@ -50,6 +53,14 @@ class TestContextManager(unittest.TestCase):
     def test_context_manager_sets_conversation_id(self):
         """Test that context manager sets conversation_id."""
         self.assertIsNone(get_conversation())
+
+    def test_context_manager_sets_run_id(self):
+        self.assertIsNone(get_run())
+
+        with AgentalizeContext(run_id="run-123"):
+            self.assertEqual(get_run(), "run-123")
+
+        self.assertIsNone(get_run())
         
         with AgentalizeContext(conversation_id="conv-789"):
             self.assertEqual(get_conversation(), "conv-789")
@@ -107,6 +118,7 @@ class TestGlobalSetters(unittest.TestCase):
         set_user(None)
         set_session(None)
         set_conversation(None)
+        set_run(None)
         set_metadata(None)
 
     def test_set_user(self):
@@ -127,6 +139,10 @@ class TestGlobalSetters(unittest.TestCase):
         set_conversation("global-conv")
         self.assertEqual(get_conversation(), "global-conv")
 
+    def test_set_run(self):
+        set_run("run-global")
+        self.assertEqual(get_run(), "run-global")
+
     def test_set_metadata(self):
         """Test set_metadata() function."""
         set_metadata({"global": True})
@@ -140,6 +156,7 @@ class TestGetContextAttributes(unittest.TestCase):
         set_user(None)
         set_session(None)
         set_conversation(None)
+        set_run(None)
         set_metadata(None)
 
     def test_empty_context(self):
