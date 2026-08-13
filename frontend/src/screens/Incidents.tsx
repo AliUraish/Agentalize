@@ -1,11 +1,13 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Microscope, TriangleAlert } from 'lucide-react'
-import { INCIDENTS } from '../mock/dataset'
 import { Panel, EmptyState } from '../components/ui/Primitives'
 import { SeverityBadge, StatusBadge } from '../components/ui/Badge'
 import { formatRelative } from '../lib/format'
 import type { IncidentStatus } from '../types/domain'
+import { useApiQuery } from '../hooks/useApiQuery'
+import type { Page } from '../lib/api'
+import { mapIncident, type BackendAgent, type BackendIncident } from '../lib/liveData'
 
 type View = 'attention' | 'investigating' | 'approval' | 'verifying' | 'resolved' | 'regressed'
 
@@ -24,14 +26,24 @@ const VIEWS: { id: View; label: string; match: (s: IncidentStatus) => boolean }[
 
 export function Incidents() {
   const [view, setView] = useState<View>('attention')
+  const incidentsQuery = useApiQuery<Page<BackendIncident>>('/incidents?limit=200', 10_000)
+  const agentsQuery = useApiQuery<Page<BackendAgent>>('/agents?limit=200', 10_000)
+  const incidents = useMemo(
+    () => (incidentsQuery.data?.items || []).map((item) => mapIncident(item, agentsQuery.data?.items)),
+    [incidentsQuery.data, agentsQuery.data],
+  )
   const active = VIEWS.find((v) => v.id === view)!
-  const rows = INCIDENTS.filter((i) => active.match(i.status))
+  const rows = incidents.filter((i) => active.match(i.status))
+
+  if (incidentsQuery.loading && !incidentsQuery.data) {
+    return <div className="p-4"><Panel><EmptyState icon={Microscope} title="Loading incidents" detail="Reading correlated production incidents from MongoDB…" /></Panel></div>
+  }
 
   return (
     <div className="flex flex-col gap-3 p-4">
       <div className="flex flex-wrap items-center gap-1.5">
         {VIEWS.map((v) => {
-          const count = INCIDENTS.filter((i) => v.match(i.status)).length
+          const count = incidents.filter((i) => v.match(i.status)).length
           const on = v.id === view
           return (
             <button
@@ -54,7 +66,13 @@ export function Incidents() {
       </div>
 
       <Panel>
-        {rows.length === 0 ? (
+        {incidentsQuery.error && !incidentsQuery.data ? (
+          <EmptyState
+            icon={TriangleAlert}
+            title="Could not load incidents"
+            detail={incidentsQuery.error.message}
+          />
+        ) : rows.length === 0 ? (
           <EmptyState
             icon={TriangleAlert}
             title="No incidents in this view"
