@@ -10,7 +10,6 @@ import {
   TriangleAlert,
   Users,
 } from 'lucide-react'
-import { HYPOTHESES, INCIDENTS } from '../mock/dataset'
 import { Tabs, Button, CopyableId, EmptyState } from '../components/ui/Primitives'
 import {
   AutonomyBadge,
@@ -25,6 +24,8 @@ import { InvestigationTab } from './incident/InvestigationTab'
 import { FixTab } from './incident/FixTab'
 import { VerificationTab } from './incident/VerificationTab'
 import { TimelineTab } from './incident/TimelineTab'
+import { useApiQuery } from '../hooks/useApiQuery'
+import { mapIncident, type BackendIncident } from '../lib/liveData'
 
 type Tab = 'overview' | 'evidence' | 'investigation' | 'fix' | 'verification' | 'timeline'
 
@@ -42,15 +43,23 @@ export function IncidentDetail() {
   // Tab lives in the URL so a link can point at the exact view (§16).
   const [params, setParams] = useSearchParams()
   const tab = (params.get('tab') as Tab) ?? 'overview'
+  const incidentQuery = useApiQuery<BackendIncident>(
+    `/incidents/${encodeURIComponent(incidentId || '')}`,
+    10_000,
+  )
 
-  const incident = INCIDENTS.find((i) => i.incidentId === incidentId)
+  if (incidentQuery.loading && !incidentQuery.data) {
+    return <EmptyState icon={Microscope} title="Loading incident" detail="Reading the latest investigation state from MongoDB…" />
+  }
+
+  const incident = incidentQuery.data ? mapIncident(incidentQuery.data) : null
 
   if (!incident) {
     return (
       <EmptyState
         icon={TriangleAlert}
         title="Incident not found"
-        detail="This incident does not exist, or you do not have access to this project."
+        detail={incidentQuery.error?.message || 'This incident does not exist, or you do not have access to this project.'}
         action={
           <Link to="/incidents">
             <Button variant="secondary">Back to incidents</Button>
@@ -60,11 +69,9 @@ export function IncidentDetail() {
     )
   }
 
-  const best = HYPOTHESES.filter((h) => h.incidentId === incident.incidentId).sort(
+  const best = incidentQuery.data?.bestHypothesis || [...(incidentQuery.data?.hypotheses || [])].sort(
     (a, b) => b.confidence - a.confidence,
   )[0]
-
-  const isPrimary = incident.incidentId === 'inc_123'
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -182,14 +189,14 @@ export function IncidentDetail() {
           tab === 'investigation' ? 'flex overflow-hidden' : 'overflow-y-auto'
         }`}
       >
-        {!isPrimary && tab !== 'overview' && tab !== 'timeline' ? (
+        {!['overview', 'timeline'].includes(tab) ? (
           <EmptyState
             icon={Microscope}
-            title="Not available for this incident"
-            detail="This demo carries the full evidence, investigation, fix and verification trail for inc_123 only."
+            title="Use the live overview or timeline"
+            detail="This connected build currently renders the live incident summary and complete backend timeline. The richer replay workspaces remain presentation-only until their event models are aligned with the API."
             action={
-              <Link to="/incidents/inc_123?tab=investigation">
-                <Button variant="secondary">Open inc_123</Button>
+              <Link to={`/incidents/${incident.incidentId}?tab=overview`}>
+                <Button variant="secondary">Open live overview</Button>
               </Link>
             }
           />
@@ -200,7 +207,7 @@ export function IncidentDetail() {
             {tab === 'investigation' && <InvestigationTab incident={incident} />}
             {tab === 'fix' && <FixTab />}
             {tab === 'verification' && <VerificationTab />}
-            {tab === 'timeline' && <TimelineTab />}
+            {tab === 'timeline' && <TimelineTab incidentId={incident.incidentId} />}
           </>
         )}
       </div>
