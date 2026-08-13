@@ -1,192 +1,87 @@
-import { Link } from 'react-router-dom'
-import { ArrowRight, CircleCheck, CircleAlert } from 'lucide-react'
+import { Activity, Database, Radio, Rocket, Users } from 'lucide-react'
+import { OccurrenceChart } from '../../components/charts/Bars'
+import { Badge } from '../../components/ui/Badge'
+import { EmptyState, Panel, SectionLabel } from '../../components/ui/Primitives'
+import { formatDateTime } from '../../lib/format'
 import type { Incident } from '../../types/domain'
-import { DEPLOYMENTS, EVALUATIONS, MEMORIES, RUNS } from '../../mock/dataset'
-import { Panel } from '../../components/ui/Primitives'
-import { EvaluatorBadge, PassBadge, VerifiedBadge } from '../../components/ui/Badge'
-import { OccurrenceChart, BarList } from '../../components/charts/Bars'
-import { Legend } from '../../components/charts/TimeSeriesChart'
-import { formatDateTime, percent } from '../../lib/format'
 
 export function OverviewTab({ incident }: { incident: Incident }) {
-  const failingRun = RUNS.find((r) => r.runId === 'run_9f21')!
-  const passingRun = RUNS.find((r) => r.runId === 'run_8c02')!
-
-  const evalDistribution = Object.entries(
-    EVALUATIONS.reduce<Record<string, number>>((acc, e) => {
-      if (e.pass === false) acc[e.metric] = (acc[e.metric] ?? 0) + 1
-      return acc
-    }, {}),
-  ).map(([label, value]) => ({ label, value }))
-
-  const similar = MEMORIES.filter((m) => m.memoryId !== 'mem_77' && m.score > 0.5)
-
   return (
-    <div className="grid grid-cols-1 gap-3 p-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+    <div className="grid grid-cols-1 gap-3 p-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,0.75fr)]">
       <div className="flex flex-col gap-3">
-        <Panel
-          title="Occurrences and affected users"
-          hint="Hourly · deployment markers on the axis"
-          action={
-            <Legend
-              series={[
-                { key: 'o', label: 'Occurrences', color: 'var(--color-series-1)' },
-                { key: 'u', label: 'Users affected', color: 'var(--color-series-2)' },
-              ]}
-            />
-          }
-          bodyClassName="px-3 pt-2 pb-3"
-        >
-          <OccurrenceChart
-            data={incident.series}
-            height={180}
-            markers={DEPLOYMENTS.filter((d) => d.atHour >= 8).map((d) => ({
-              at: d.atHour,
-              label: d.version,
-              tone:
-                d.deploymentId === incident.suspectedDeploymentId
-                  ? 'var(--color-critical)'
-                  : 'var(--color-good)',
-            }))}
-          />
+        <Panel title="Production evidence" hint="Live values from the incident document" bodyClassName="p-3.5">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <Stat icon={Activity} label="Occurrences" value={incident.occurrenceCount.toLocaleString()} />
+            <Stat icon={Users} label="Affected users" value={incident.affectedUserCount.toLocaleString()} />
+            <Stat icon={Radio} label="Evaluations" value={incident.evaluationSummary.failed.toLocaleString()} />
+            <Stat icon={Database} label="Feedback" value={incident.feedbackCount.toLocaleString()} />
+          </div>
         </Panel>
 
-        <Panel title="Failing vs successful run" hint="Same question, before and after v2.4.0">
-          <div className="grid grid-cols-2 divide-x divide-(--color-line)">
-            <RunColumn
-              title="Failing"
-              tone="var(--color-critical)"
-              icon={<CircleAlert className="size-3.5" />}
-              run={failingRun}
-              rows={[
-                ['Cache', 'hit · 41m old'],
-                ['Ledger read', 'not performed'],
-                ['Answer', '$1,284.40'],
-                ['Truth at answer time', '$1,309.40'],
-              ]}
-            />
-            <RunColumn
-              title="Successful"
-              tone="var(--color-good)"
-              icon={<CircleCheck className="size-3.5" />}
-              run={passingRun}
-              rows={[
-                ['Cache', 'miss'],
-                ['Ledger read', 'performed'],
-                ['Answer', '$2,140.10'],
-                ['Truth at answer time', '$2,140.10'],
-              ]}
-            />
+        <Panel title="Observed impact" hint="Current correlated production window" bodyClassName="p-3.5">
+          <OccurrenceChart data={incident.series} height={190} />
+          <p className="mt-2 text-[11px] text-(--color-ink-3)">
+            The API currently stores the incident aggregate. Additional time buckets will render automatically when the backend exposes historical series.
+          </p>
+        </Panel>
+
+        <Panel title="Incident narrative" bodyClassName="p-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label="What happened" text={incident.whatHappened} />
+            <Field label="Impact" text={incident.impact} />
+            <Field label="What changed" text={incident.whatChanged} />
+            <Field label="Recommended action" text={incident.recommendedAction} />
           </div>
         </Panel>
       </div>
 
       <div className="flex flex-col gap-3">
-        <Panel title="Evaluation failures by metric" bodyClassName="p-3.5">
-          <BarList rows={evalDistribution} color="var(--color-critical)" />
-          {incident.evaluationSummary.conflicting && (
-            <div className="mt-3 rounded-md border border-(--color-warning)/35 bg-(--color-warning-soft) p-2.5">
-              <div className="text-[11px] font-medium text-(--color-warning)">
-                Conflicting evaluations — shown as needs review, not averaged
-              </div>
-              <div className="mt-1.5 flex flex-col gap-1.5">
-                {EVALUATIONS.filter((e) => e.target.id === 'run_9f21').map((e) => (
-                  <div key={e.evaluationId} className="flex items-center gap-1.5">
-                    <PassBadge pass={e.pass} size="sm" />
-                    <span className="truncate font-mono text-[10px] text-(--color-ink-2)">
-                      {e.metric}
-                    </span>
-                    <span className="ml-auto shrink-0">
-                      <EvaluatorBadge type={e.evaluator.type} size="sm" />
-                    </span>
-                  </div>
-                ))}
-              </div>
-              <p className="mt-2 text-[10px] text-(--color-ink-3)">
-                The model judge scored groundedness as a pass because the answer is faithful to
-                what was retrieved. It cannot see that the retrieval itself was stale — which is
-                why a deterministic failure overrides it.
-              </p>
+        <Panel title="Signal references" hint={`${incident.signalRefs.length} linked records`} bodyClassName="divide-y divide-(--color-line)">
+          {incident.signalRefs.length ? incident.signalRefs.map((reference) => (
+            <div key={reference} className="flex items-center gap-2 px-3.5 py-2.5">
+              <Radio className="size-3.5 text-(--color-ai)" />
+              <code className="min-w-0 truncate font-mono text-[11px] text-(--color-ink-2)">{reference}</code>
             </div>
-          )}
+          )) : <EmptyState icon={Radio} title="No linked signals" detail="Evaluation and feedback references will appear here." />}
         </Panel>
 
-        <Panel
-          title="Similar historical incidents"
-          hint="Atlas Vector Search, filtered to this project"
-          bodyClassName="divide-y divide-(--color-line)"
-        >
-          {similar.map((m) => (
-            <Link
-              key={m.memoryId}
-              to={`/memory?focus=${m.memoryId}`}
-              className="block px-3.5 py-2.5 transition-colors hover:bg-white/4"
-            >
-              <div className="flex items-start gap-2">
-                <div className="min-w-0 flex-1">
-                  <div className="text-[13px] leading-snug font-medium">{m.summary}</div>
-                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                    <VerifiedBadge verified={m.verified} size="sm" />
-                    <span className="tabular text-[11px] text-(--color-ink-3)">
-                      similarity {m.score.toFixed(2)}
-                    </span>
-                  </div>
-                  <p className="mt-1.5 text-[11px] text-(--color-ink-3)">{m.similarityReason}</p>
+        <Panel title="Deployments" hint="Production changes linked to this incident" bodyClassName="p-3.5">
+          {incident.deploymentIds.length ? (
+            <div className="flex flex-col gap-2">
+              {incident.deploymentIds.map((deployment) => (
+                <div key={deployment} className="flex items-center gap-2 rounded-md border border-(--color-line) p-2.5">
+                  <Rocket className="size-3.5 text-(--color-ink-3)" />
+                  <code className="font-mono text-[11px]">{deployment}</code>
+                  {deployment === incident.suspectedDeploymentId && <Badge tone="warning" icon={Rocket} size="sm">suspected</Badge>}
                 </div>
-                <ArrowRight className="mt-1 size-3.5 shrink-0 text-(--color-ink-3)" />
-              </div>
-            </Link>
-          ))}
+              ))}
+            </div>
+          ) : <EmptyState icon={Rocket} title="No deployment linked" detail="The investigator has not confirmed a causal deployment." />}
         </Panel>
 
-        <Panel title="User feedback themes" bodyClassName="p-3.5">
-          <BarList
-            rows={[
-              { label: 'balance is wrong / old', value: 8 },
-              { label: 'transfer declined unexpectedly', value: 3 },
-              { label: 'had to call support', value: 1 },
-            ]}
-            color="var(--color-series-2)"
-          />
-          <p className="mt-3 text-[11px] text-(--color-ink-3)">
-            Clustered from 12 redacted comments over {percent(12 / 39, 0)} of affected users.
-          </p>
+        <Panel title="Record metadata" bodyClassName="p-3.5">
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-[11px]">
+            <Meta label="Agent" value={incident.agentName} />
+            <Meta label="Environment" value={incident.environment} />
+            <Meta label="First seen" value={formatDateTime(incident.firstSeenAt)} />
+            <Meta label="Last seen" value={formatDateTime(incident.lastSeenAt)} />
+            <Meta label="Owner" value={incident.owner.teamId} />
+            <Meta label="Version" value={String(incident.version)} />
+          </dl>
         </Panel>
       </div>
     </div>
   )
 }
 
-function RunColumn({
-  title,
-  tone,
-  icon,
-  run,
-  rows,
-}: {
-  title: string
-  tone: string
-  icon: React.ReactNode
-  run: { runId: string; agentVersion: string; startedAt: string }
-  rows: [string, string][]
-}) {
-  return (
-    <div className="p-3.5">
-      <div className="flex items-center gap-1.5" style={{ color: tone }}>
-        {icon}
-        <span className="text-[13px] font-semibold">{title}</span>
-      </div>
-      <div className="mt-1 font-mono text-[10px] text-(--color-ink-3)">
-        {run.runId} · {run.agentVersion} · {formatDateTime(run.startedAt)}
-      </div>
-      <dl className="mt-2.5 flex flex-col gap-1.5">
-        {rows.map(([k, v]) => (
-          <div key={k} className="flex items-baseline justify-between gap-2">
-            <dt className="text-[11px] text-(--color-ink-3)">{k}</dt>
-            <dd className="tabular truncate text-[11px] font-medium">{v}</dd>
-          </div>
-        ))}
-      </dl>
-    </div>
-  )
+function Stat({ icon: Icon, label, value }: { icon: typeof Activity; label: string; value: string }) {
+  return <div className="rounded-md border border-(--color-line) p-3"><Icon className="size-3.5 text-(--color-ink-3)" /><div className="tabular mt-2 text-xl font-semibold">{value}</div><div className="mt-1 text-[10px] tracking-wide text-(--color-ink-3) uppercase">{label}</div></div>
+}
+
+function Field({ label, text }: { label: string; text: string }) {
+  return <div><SectionLabel>{label}</SectionLabel><p className="mt-1.5 text-[12px] leading-relaxed text-(--color-ink-2)">{text}</p></div>
+}
+
+function Meta({ label, value }: { label: string; value: string }) {
+  return <><dt className="text-(--color-ink-3)">{label}</dt><dd className="min-w-0 truncate text-right font-mono text-(--color-ink-2)">{value}</dd></>
 }
