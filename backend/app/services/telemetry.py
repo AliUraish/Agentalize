@@ -215,23 +215,26 @@ class TelemetryService:
         )
         estimated_cost = _attribute_number(spans, "llm.usage.cost", "gen_ai.usage.cost")
 
+        agent_defaults = new_document(
+            tenant.organization_id,
+            tenant.project_id,
+            description="",
+            framework=None,
+            owner=None,
+            tags=[],
+            mode="monitor",
+        )
+        # MongoDB rejects the same path in $set and $setOnInsert. The current
+        # name and timestamp belong in $set so both inserts and updates use them.
+        agent_defaults.pop("updatedAt")
+
         await self.store.update_one(
             "agents",
             tenant_query(
                 tenant.organization_id, tenant.project_id, agentId=trace.agent_id
             ),
             {
-                "$setOnInsert": new_document(
-                    tenant.organization_id,
-                    tenant.project_id,
-                    agentId=trace.agent_id,
-                    name=trace.agent_name or trace.agent_id,
-                    description="",
-                    framework=None,
-                    owner=None,
-                    tags=[],
-                    mode="monitor",
-                ),
+                "$setOnInsert": agent_defaults,
                 "$set": {
                     "name": trace.agent_name or trace.agent_id,
                     "lastSeenAt": end_time,
@@ -282,6 +285,35 @@ class TelemetryService:
             errorCount=len(error_spans),
         )
         await self.store.insert_one("traces", trace_document)
+        existing_evaluations = await self.store.find_many(
+            "evaluations",
+            tenant_query(
+                tenant.organization_id,
+                tenant.project_id,
+                **{"target.id": run_id},
+            ),
+            limit=10_000,
+        )
+        existing_feedback_count = await self.store.count(
+            "feedback",
+            tenant_query(
+                tenant.organization_id,
+                tenant.project_id,
+                **{"target.id": run_id},
+            ),
+        )
+        passed_evaluations = sum(
+            1 for evaluation in existing_evaluations if evaluation.get("passed") is True
+        )
+        failed_evaluations = sum(
+            1 for evaluation in existing_evaluations if evaluation.get("passed") is False
+        )
+        if failed_evaluations:
+            evaluation_status = "failed"
+        elif passed_evaluations:
+            evaluation_status = "passed"
+        else:
+            evaluation_status = "not_evaluated"
         run_document = new_document(
             tenant.organization_id,
             tenant.project_id,
@@ -306,8 +338,12 @@ class TelemetryService:
             estimatedCost=estimated_cost,
             toolCount=sum(1 for span in spans if "tool" in span.name.lower()),
             errorCount=len(error_spans),
-            evaluationRollup={"status": "not_evaluated", "passed": 0, "failed": 0},
-            feedbackCount=0,
+            evaluationRollup={
+                "status": evaluation_status,
+                "passed": passed_evaluations,
+                "failed": failed_evaluations,
+            },
+            feedbackCount=existing_feedback_count,
         )
         await self.store.insert_one("runs", run_document)
 
