@@ -8,8 +8,8 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      // Control-plane API (§11). Keeps provider keys and tenant scope server-side.
-      '/v1': {
+      // Local demo control plane. Browser requests stay same-origin in development.
+      '/api': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
       },
