@@ -76,16 +76,80 @@ class RepositoryInspector:
             results.append(path)
         return results
 
+    def structure(self, root: Path) -> list[dict[str, Any]]:
+        """Return the complete safe repository architecture for the UI tree."""
+        entries: list[dict[str, Any]] = []
+        files = self.files(root)
+        directories = {
+            parent
+            for path in files
+            for parent in path.parents
+            if parent != root and parent.is_relative_to(root)
+        }
+        for directory in sorted(directories, key=lambda item: str(item.relative_to(root))):
+            entries.append({"path": str(directory.relative_to(root)), "type": "directory"})
+        for path in sorted(files, key=lambda item: str(item.relative_to(root))):
+            entries.append(
+                {
+                    "path": str(path.relative_to(root)),
+                    "type": "file",
+                    "sizeBytes": path.stat().st_size,
+                }
+            )
+        return entries
+
+    def read_file(
+        self,
+        root: Path,
+        relative_path: str,
+        *,
+        line: int = 1,
+        context: int = 20,
+    ) -> dict[str, Any]:
+        """Read a bounded, redacted source window inside the investigation root."""
+        target = (root / relative_path).resolve()
+        if not target.is_relative_to(root) or not target.is_file():
+            raise ValueError("Repository file does not exist")
+        if target.suffix.lower() not in ALLOWED_SUFFIXES:
+            raise ValueError("Repository file type is not supported")
+        if target.stat().st_size > self.settings.max_repository_file_bytes:
+            raise ValueError("Repository file is too large to display")
+
+        source_lines = target.read_text(encoding="utf-8", errors="ignore").splitlines()
+        focus_line = max(1, min(line, max(1, len(source_lines))))
+        radius = max(2, min(context, 60))
+        start = max(1, focus_line - radius)
+        end = min(len(source_lines), focus_line + radius)
+        return {
+            "path": str(target.relative_to(root)),
+            "focusLine": focus_line,
+            "startLine": start,
+            "endLine": end,
+            "totalLines": len(source_lines),
+            "lines": [
+                {"number": number, "text": redact_text(source_lines[number - 1], 1_000)}
+                for number in range(start, end + 1)
+            ],
+        }
+
     def search(
         self, root: Path, query: str, *, limit: int = 12
     ) -> list[RepositoryEvidence]:
-        terms = [term.lower() for term in re.findall(r"[A-Za-z_][A-Za-z0-9_.-]{2,}", query)]
-        common = {"failed", "failure", "error", "agent", "evaluation", "unknown", "with", "from"}
-        terms = [term for term in terms if term not in common][:12]
+        raw_terms = [term.lower() for term in re.findall(r"[A-Za-z_][A-Za-z0-9_.-]{2,}", query)]
+        common = {
+            "failed", "failure", "error", "agent", "evaluation", "unknown",
+            "with", "from", "the", "for", "was", "because", "returned",
+            "before", "could", "into", "this", "that",
+        }
+        terms = list(dict.fromkeys(term for term in raw_terms if term not in common))[:16]
         if not terms:
             terms = ["trace", "agent"]
         evidence: list[RepositoryEvidence] = []
         for path in self.files(root):
+            # Seed fixtures describe the incident verbatim and would otherwise
+            # outrank the production implementation that actually caused it.
+            if path.name.startswith("seed_"):
+                continue
             try:
                 lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
             except OSError:
@@ -94,6 +158,9 @@ class RepositoryInspector:
                 lowered = line.lower()
                 score = sum(1 for term in terms if term in lowered)
                 if score:
+                    if path.suffix.lower() != ".md":
+                        score += 2
+                    score += sum(1 for term in terms if term in path.name.lower())
                     evidence.append(
                         RepositoryEvidence(
                             path=str(path.relative_to(root)),
@@ -175,4 +242,3 @@ class OpenAICompatibleClient:
             if not isinstance(parsed, dict):
                 return None
             return parsed
-
