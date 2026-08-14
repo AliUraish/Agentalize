@@ -21,6 +21,11 @@ def _timestamp(nanoseconds: int) -> datetime:
     return datetime.fromtimestamp(nanoseconds / 1_000_000_000, tz=UTC)
 
 
+def _duration_ms(start: datetime, end: datetime) -> int:
+    """Return elapsed milliseconds without floating-point truncation."""
+    return max(0, round((end - start).total_seconds() * 1000))
+
+
 def _any_value(value: Any) -> Any:
     kind = value.WhichOneof("value")
     if kind == "string_value":
@@ -200,7 +205,7 @@ class TelemetryService:
         spans = sorted(trace.spans, key=lambda item: item.start_time)
         start_time = min(span.start_time for span in spans)
         end_time = max(span.end_time for span in spans)
-        duration_ms = max(0, int((end_time - start_time).total_seconds() * 1000))
+        duration_ms = _duration_ms(start_time, end_time)
         error_spans = [span for span in spans if span.status == "error"]
         run_id = trace.run_id or new_id("run")
         status = "error" if error_spans else "ok"
@@ -258,7 +263,7 @@ class TelemetryService:
                 kind=span.kind,
                 startTime=span.start_time,
                 endTime=span.end_time,
-                durationMs=max(0, int((span.end_time - span.start_time).total_seconds() * 1000)),
+                durationMs=_duration_ms(span.start_time, span.end_time),
                 status=span.status,
                 attributes=redact_value(span.attributes),
                 events=redact_value(span.events),
