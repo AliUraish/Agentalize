@@ -3,9 +3,9 @@ import type {
   Deployment,
   Incident,
   Investigation,
-  Memory,
   OverviewKpi,
 } from '../types/domain'
+import { DEMO_AGENT_ID, DEMO_AGENT_NAME } from './demoScope'
 
 export interface BackendOverview {
   windowHours: number
@@ -103,20 +103,6 @@ export interface BackendInvestigation {
   budgets?: { maxFiles?: number; maxSteps?: number }
 }
 
-export interface BackendMemory {
-  memoryId: string
-  title?: string
-  summary: string
-  outcome: string
-  verified?: boolean
-  similarityScore?: number
-  agent_id?: string
-  tags?: string[]
-  evidence_refs?: string[]
-  createdAt: string
-  deprecated?: boolean
-}
-
 export function mapIncident(raw: BackendIncident, agents: BackendAgent[] = []): Incident {
   const agent = agents.find((item) => item.agentId === raw.agentId)
   const failedEvaluations = raw.signalTypes?.filter((type) => type === 'evaluation').length ?? 0
@@ -127,7 +113,7 @@ export function mapIncident(raw: BackendIncident, agents: BackendAgent[] = []): 
   return {
     incidentId: raw.incidentId,
     agentId: raw.agentId,
-    agentName: agent?.name || raw.agentId,
+    agentName: raw.agentId === DEMO_AGENT_ID ? DEMO_AGENT_NAME : agent?.name || raw.agentId,
     title: raw.title,
     fingerprint: raw.fingerprint,
     severity: raw.severity,
@@ -176,7 +162,7 @@ export function mapAgent(
 
   return {
     agentId: raw.agentId,
-    name: raw.name,
+    name: raw.agentId === DEMO_AGENT_ID ? DEMO_AGENT_NAME : raw.name,
     owner: raw.owner || 'unassigned',
     framework: raw.framework || 'custom',
     environment: (overview.environment || 'production') as Agent['environment'],
@@ -226,30 +212,6 @@ export function mapInvestigation(raw: BackendInvestigation): Investigation {
       label: label.replace(/([A-Z])/g, ' $1').toLowerCase(),
       granted,
     })),
-  }
-}
-
-export function mapMemory(raw: BackendMemory): Memory {
-  const outcome = ['resolved', 'ineffective', 'rolled_back', 'regressed'].includes(raw.outcome)
-    ? (raw.outcome as Memory['outcome'])
-    : 'ineffective'
-  return {
-    memoryId: raw.memoryId,
-    summary: raw.title || raw.summary,
-    detail: raw.summary,
-    outcome,
-    verified: Boolean(raw.verified),
-    similarityReason: 'Matched against the stored incident title, summary, and tags.',
-    score: raw.similarityScore || 0,
-    agentId: raw.agent_id || 'unknown-agent',
-    tags: raw.tags || [],
-    repositoryPaths: [],
-    regressionTest: null,
-    productionOutcome: raw.verified
-      ? 'Production marked this outcome as resolved.'
-      : 'This memory has not been verified in production.',
-    createdAt: raw.createdAt,
-    excludedFromRetrieval: Boolean(raw.deprecated),
   }
 }
 
