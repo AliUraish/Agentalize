@@ -8,6 +8,7 @@ import type { IncidentStatus } from '../types/domain'
 import { useApiQuery } from '../hooks/useApiQuery'
 import type { Page } from '../lib/api'
 import { mapIncident, type BackendAgent, type BackendIncident } from '../lib/liveData'
+import { DEMO_AGENT_ID } from '../lib/demoScope'
 
 type View = 'attention' | 'investigating' | 'approval' | 'verifying' | 'resolved' | 'regressed'
 
@@ -26,8 +27,8 @@ const VIEWS: { id: View; label: string; match: (s: IncidentStatus) => boolean }[
 
 export function Incidents() {
   const [view, setView] = useState<View>('attention')
-  const incidentsQuery = useApiQuery<Page<BackendIncident>>('/incidents?limit=200', 10_000)
-  const agentsQuery = useApiQuery<Page<BackendAgent>>('/agents?limit=200', 10_000)
+  const incidentsQuery = useApiQuery<Page<BackendIncident>>(`/incidents?limit=200&agent_id=${DEMO_AGENT_ID}`, 10_000)
+  const agentsQuery = useApiQuery<Page<BackendAgent>>(`/agents?limit=200&agent_id=${DEMO_AGENT_ID}`, 10_000)
   const incidents = useMemo(
     () => (incidentsQuery.data?.items || []).map((item) => mapIncident(item, agentsQuery.data?.items)),
     [incidentsQuery.data, agentsQuery.data],
