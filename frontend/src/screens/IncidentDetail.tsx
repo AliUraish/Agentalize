@@ -1,10 +1,8 @@
 import { useSearchParams, useParams, Link } from 'react-router-dom'
 import {
   ArrowRight,
-  BadgeCheck,
   Ellipsis,
   Eye,
-  GitPullRequest,
   Lightbulb,
   Microscope,
   TriangleAlert,
@@ -19,22 +17,16 @@ import {
 } from '../components/ui/Badge'
 import { formatDateTime, formatRelative } from '../lib/format'
 import { OverviewTab } from './incident/OverviewTab'
-import { EvidenceTab } from './incident/EvidenceTab'
-import { InvestigationTab } from './incident/InvestigationTab'
-import { FixTab } from './incident/FixTab'
-import { VerificationTab } from './incident/VerificationTab'
+import { RepositoryInvestigationWorkspace } from './Investigations'
 import { TimelineTab } from './incident/TimelineTab'
 import { useApiQuery } from '../hooks/useApiQuery'
 import { mapIncident, type BackendIncident } from '../lib/liveData'
 
-type Tab = 'overview' | 'evidence' | 'investigation' | 'fix' | 'verification' | 'timeline'
+type Tab = 'overview' | 'investigation' | 'timeline'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
-  { id: 'evidence', label: 'Evidence' },
   { id: 'investigation', label: 'Investigation' },
-  { id: 'fix', label: 'Fix' },
-  { id: 'verification', label: 'Verification' },
   { id: 'timeline', label: 'Timeline' },
 ]
 
@@ -107,19 +99,7 @@ export function IncidentDetail() {
 
           <div className="flex shrink-0 items-center gap-1.5">
             {/* Primary action follows the lifecycle position */}
-            {incident.status === 'verifying' ? (
-              <Button
-                variant="primary"
-                icon={BadgeCheck}
-                onClick={() => setParams({ tab: 'verification' })}
-              >
-                View verification
-              </Button>
-            ) : incident.status === 'awaiting_approval' ? (
-              <Button variant="primary" icon={GitPullRequest}>
-                Approve PR
-              </Button>
-            ) : incident.activeInvestigationId ? (
+            {incident.activeInvestigationId ? (
               <Button
                 variant="primary"
                 icon={Microscope}
@@ -189,27 +169,13 @@ export function IncidentDetail() {
           tab === 'investigation' ? 'flex overflow-hidden' : 'overflow-y-auto'
         }`}
       >
-        {!['overview', 'timeline'].includes(tab) ? (
-          <EmptyState
-            icon={Microscope}
-            title="Use the live overview or timeline"
-            detail="This connected build currently renders the live incident summary and complete backend timeline. The richer replay workspaces remain presentation-only until their event models are aligned with the API."
-            action={
-              <Link to={`/incidents/${incident.incidentId}?tab=overview`}>
-                <Button variant="secondary">Open live overview</Button>
-              </Link>
-            }
-          />
-        ) : (
-          <>
-            {tab === 'overview' && <OverviewTab incident={incident} />}
-            {tab === 'evidence' && <EvidenceTab />}
-            {tab === 'investigation' && <InvestigationTab incident={incident} />}
-            {tab === 'fix' && <FixTab />}
-            {tab === 'verification' && <VerificationTab />}
-            {tab === 'timeline' && <TimelineTab incidentId={incident.incidentId} />}
-          </>
+        {tab === 'overview' && <OverviewTab incident={incident} />}
+        {tab === 'investigation' && (
+          incident.activeInvestigationId
+            ? <div className="w-full overflow-y-auto p-4"><RepositoryInvestigationWorkspace investigationId={incident.activeInvestigationId} /></div>
+            : <EmptyState icon={Microscope} title="No investigation yet" detail="Start an investigation to inspect the repository and locate the fetching issue." />
         )}
+        {tab === 'timeline' && <TimelineTab incidentId={incident.incidentId} />}
       </div>
     </div>
   )
