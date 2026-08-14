@@ -4,7 +4,6 @@ import {
   Bot,
   ChevronDown,
   CircleHelp,
-  Database,
   Gauge,
   LayoutGrid,
   MessageSquare,
@@ -19,6 +18,7 @@ import {
 import type { LucideIcon } from 'lucide-react'
 import { useApiQuery } from '../../hooks/useApiQuery'
 import type { HealthResponse, Page } from '../../lib/api'
+import { DEMO_AGENT_ID, DEMO_AGENT_NAME } from '../../lib/demoScope'
 
 interface NavItem {
   to: string
@@ -45,7 +45,6 @@ const GROUPS: { label: string; items: NavItem[] }[] = [
     items: [
       { to: '/incidents', label: 'Incidents', icon: TriangleAlert, badgeTone: 'critical' },
       { to: '/investigations', label: 'Investigations', icon: Microscope, badgeTone: 'warning' },
-      { to: '/memory', label: 'Memory', icon: Database },
       { to: '/deployments', label: 'Deployments', icon: Rocket },
     ],
   },
@@ -62,9 +61,9 @@ export function Sidebar({
   collapsed: boolean
   onToggle: () => void
 }) {
-  const feedback = useApiQuery<Page<unknown>>('/feedback?limit=1', 10_000)
-  const incidents = useApiQuery<Page<{ status?: string }>>('/incidents?limit=200', 10_000)
-  const investigations = useApiQuery<Page<unknown>>('/investigations?limit=1', 10_000)
+  const feedback = useApiQuery<Page<unknown>>(`/feedback?limit=1&agent_id=${DEMO_AGENT_ID}&workflow=article_fetch`, 10_000)
+  const incidents = useApiQuery<Page<{ status?: string }>>(`/incidents?limit=200&agent_id=${DEMO_AGENT_ID}`, 10_000)
+  const investigations = useApiQuery<Page<unknown>>(`/investigations?limit=1&agent_id=${DEMO_AGENT_ID}`, 10_000)
   const health = useApiQuery<HealthResponse>('/health', 5_000)
   const badges: Record<string, number | undefined> = {
     '/feedback': feedback.data?.count,
@@ -83,14 +82,14 @@ export function Sidebar({
         <button
           type="button"
           className="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-1.5 py-1.5 text-left transition-colors hover:bg-white/5"
-          title="Agentalize Demo · MongoDB Atlas"
+          title={`${DEMO_AGENT_NAME} · MongoDB Atlas`}
         >
           <Mark />
           {!collapsed && (
             <>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[13px] leading-4 font-semibold">
-                  Agentalize Demo
+                  {DEMO_AGENT_NAME}
                 </span>
                 <span className="block truncate text-[11px] text-(--color-ink-3)">
                   MongoDB Atlas
