@@ -81,7 +81,7 @@ class FeedbackService:
             reason=payload.comment or f"User rating: {payload.rating}",
             evidence_refs=[stored["feedbackId"]],
             triggers_incident=True,
-            metadata={"source_user_id": payload.source_user_id},
+            metadata={**payload.metadata, "source_user_id": payload.source_user_id},
         )
         evaluation, incident = await self.evaluations.create(tenant, evaluation_payload)
         await self.store.update_one(
