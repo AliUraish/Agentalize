@@ -6,8 +6,8 @@ def trace_payload(error: bool = False) -> dict:
     return {
         "trace_id": "trace-test-001",
         "run_id": "run-test-001",
-        "agent_id": "support-agent",
-        "agent_name": "Support Agent",
+        "agent_id": "python-sdk-test-agent",
+        "agent_name": "Python SDK Test Agent",
         "environment": "production",
         "deployment_id": "deploy-test-001",
         "git_commit_sha": "abc123",
@@ -24,7 +24,7 @@ def trace_payload(error: bool = False) -> dict:
                 "events": [
                     {
                         "name": "exception",
-                        "attributes": {"exception.message": "Balance cache failed"},
+                        "attributes": {"exception.message": "Article fetch timed out"},
                     }
                 ]
                 if error
@@ -71,7 +71,7 @@ def test_feedback_evaluation_investigation_and_remediation(client, sdk_headers, 
         headers=sdk_headers,
         json={
             "target": {"type": "run", "id": "run-test-001"},
-            "agent_id": "support-agent",
+            "agent_id": "python-sdk-test-agent",
             "environment": "production",
             "metric": "answer_correctness",
             "evaluator_type": "application",
@@ -80,7 +80,7 @@ def test_feedback_evaluation_investigation_and_remediation(client, sdk_headers, 
             "label": "incorrect",
             "passed": False,
             "confidence": 1,
-            "reason": "The answer used a stale account balance.",
+            "reason": "The article fetch timed out before extraction completed.",
         },
     )
     assert evaluation.status_code == 201
@@ -91,11 +91,11 @@ def test_feedback_evaluation_investigation_and_remediation(client, sdk_headers, 
         headers=sdk_headers,
         json={
             "target": {"type": "run", "id": "run-test-001"},
-            "agent_id": "support-agent",
+            "agent_id": "python-sdk-test-agent",
             "rating": 1,
             "sentiment": "negative",
-            "category": "incorrect_answer",
-            "comment": "This balance is wrong.",
+            "category": "article_fetch_failed",
+            "comment": "The article URL could not be fetched.",
         },
     )
     assert feedback.status_code == 201
@@ -120,6 +120,44 @@ def test_feedback_evaluation_investigation_and_remediation(client, sdk_headers, 
     assert detail["remediations"][0]["dryRun"] is True
     assert len(detail["steps"]) >= 3
 
+    repository = client.get(
+        f"/api/v1/investigations/{investigation_id}/repository", headers=ui_headers
+    )
+    assert repository.status_code == 200
+    assert repository.json()["repositoryName"] == "repo"
+    assert repository.json()["files"][0]["path"] == "python_gpt_agent/fetcher.py"
+    assert {entry["path"] for entry in repository.json()["structure"]} == {
+        "python_gpt_agent",
+        "python_gpt_agent/fetcher.py",
+    }
+
+    source = client.get(
+        f"/api/v1/investigations/{investigation_id}/repository/file",
+        headers=ui_headers,
+        params={"path": "python_gpt_agent/fetcher.py", "line": 4},
+    )
+    assert source.status_code == 200
+    assert source.json()["focusLine"] == 4
+    assert source.json()["lines"][3]["text"] == "    return requests.get(url, timeout=15)"
+
+    assert client.get(
+        "/api/v1/investigations",
+        headers=ui_headers,
+        params={"agent_id": "python-sdk-test-agent"},
+    ).json()["count"] == 1
+    assert client.get(
+        "/api/v1/investigations",
+        headers=ui_headers,
+        params={"agent_id": "another-agent"},
+    ).json()["count"] == 0
+
+    traversal = client.get(
+        f"/api/v1/investigations/{investigation_id}/repository/file",
+        headers=ui_headers,
+        params={"path": "../outside.py"},
+    )
+    assert traversal.status_code == 400
+
     run = client.get("/api/v1/runs/run-test-001", headers=ui_headers).json()
     assert run["evaluationRollup"]["failed"] == 2
     assert run["feedbackCount"] == 1
@@ -128,18 +166,18 @@ def test_feedback_evaluation_investigation_and_remediation(client, sdk_headers, 
 def test_memory_search_prefers_verified_match(client, ui_headers):
     resolved = {
         "incident_id": "inc-old",
-        "title": "Stale account balance cache",
-        "summary": "Balance answers used an expired cache entry.",
+        "title": "Article fetch timeout",
+        "summary": "The source URL exceeded the extraction timeout.",
         "outcome": "resolved",
-        "agent_id": "support-agent",
-        "tags": ["balance", "cache"],
+        "agent_id": "python-sdk-test-agent",
+        "tags": ["fetch", "timeout"],
     }
     unrelated = {
         "incident_id": "inc-other",
         "title": "Email tool timeout",
         "summary": "SMTP timed out.",
         "outcome": "resolved",
-        "agent_id": "support-agent",
+        "agent_id": "python-sdk-test-agent",
         "tags": ["email"],
     }
     assert client.post("/api/v1/memories", headers=ui_headers, json=resolved).status_code == 201
@@ -147,9 +185,9 @@ def test_memory_search_prefers_verified_match(client, ui_headers):
     results = client.get(
         "/api/v1/memories/search",
         headers=ui_headers,
-        params={"query": "stale balance cache", "agent_id": "support-agent"},
+        params={"query": "article fetch timeout", "agent_id": "python-sdk-test-agent"},
     ).json()
-    assert results["items"][0]["title"] == "Stale account balance cache"
+    assert results["items"][0]["title"] == "Article fetch timeout"
     assert results["items"][0]["verified"] is True
 
 
@@ -159,7 +197,7 @@ def test_signals_arriving_before_trace_are_reconciled(client, sdk_headers, ui_he
         headers=sdk_headers,
         json={
             "target": {"type": "run", "id": "run-test-001"},
-            "agent_id": "support-agent",
+            "agent_id": "python-sdk-test-agent",
             "metric": "answer_correctness",
             "evaluator_type": "application",
             "evaluator_name": "inline_sdk_evaluator",
@@ -174,10 +212,10 @@ def test_signals_arriving_before_trace_are_reconciled(client, sdk_headers, ui_he
         headers=sdk_headers,
         json={
             "target": {"type": "run", "id": "run-test-001"},
-            "agent_id": "support-agent",
+            "agent_id": "python-sdk-test-agent",
             "rating": 1,
             "sentiment": "negative",
-            "category": "incorrect_answer",
+            "category": "article_fetch_failed",
         },
     )
     assert feedback.status_code == 201
