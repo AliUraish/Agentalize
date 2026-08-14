@@ -11,8 +11,10 @@ from app.main import create_app
 def client(tmp_path: Path):
     repo = tmp_path / "repo"
     repo.mkdir()
-    (repo / "balance.py").write_text(
-        "def get_account_balance(cache):\n    return cache.get('account_balance')\n",
+    source = repo / "python_gpt_agent"
+    source.mkdir()
+    (source / "fetcher.py").write_text(
+        "import requests\n\ndef fetch_article(url):\n    return requests.get(url, timeout=15)\n",
         encoding="utf-8",
     )
     settings = Settings(
@@ -38,4 +40,3 @@ def ui_headers() -> dict[str, str]:
         "x-project-id": "project_demo",
         "x-actor-id": "test-user",
     }
-
