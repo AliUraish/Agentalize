@@ -72,13 +72,14 @@ Keep the backend running, then use another terminal:
 
 ```bash
 cd /Users/aliuraishmirani/Agentalize/backend
-uv run python scripts/seed_demo.py
+cd /Users/aliuraishmirani/Python_gpt_gemini
+uv run python scripts/seed_agentalize_demo.py
 ```
 
 The script:
 
-1. Registers a support agent and deployment.
-2. Sends a production trace containing a stale balance lookup.
+1. Registers the Python SDK Test Agent and its `Python_gpt_gemini` deployment.
+2. Sends article-fetch traces for a successful fetch, CORS rejection, and timeout.
 3. Sends a failing correctness evaluation.
 4. Sends negative user feedback attached to the same run.
 5. Creates an incident.
@@ -94,7 +95,7 @@ Use the local API URL before initializing the current SDK:
 ```bash
 export AGENTALIZE_API_URL=http://localhost:8000
 export AGENTALIZE_API_KEY=demo-sdk-key
-export AGENTALIZE_AGENT_ID=support-agent
+export AGENTALIZE_AGENT_ID=python-sdk-test-agent
 ```
 
 The SDK sends OTLP protobuf to `http://localhost:8000/api/v1/traces`.
@@ -188,7 +189,7 @@ The model receives only a bounded incident summary, redacted repository evidence
 The investigator is read-only by default:
 
 ```dotenv
-DEMO_REPOSITORY_PATH=../agentalize-sdk
+DEMO_REPOSITORY_PATH=/Users/aliuraishmirani/Python_gpt_gemini
 ALLOW_REPOSITORY_WRITES=false
 ```
 
