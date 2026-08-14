@@ -1,14 +1,25 @@
+from datetime import UTC, datetime, timedelta
+
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
 from opentelemetry.proto.common.v1.common_pb2 import AnyValue, KeyValue
 from opentelemetry.proto.resource.v1.resource_pb2 import Resource
 from opentelemetry.proto.trace.v1.trace_pb2 import ResourceSpans, ScopeSpans, Span, Status
 
+from app.services.telemetry import _duration_ms
+
+
+def test_duration_rounds_to_nearest_millisecond() -> None:
+    start = datetime(2026, 8, 13, tzinfo=UTC)
+
+    assert _duration_ms(start, start + timedelta(microseconds=1_834_999)) == 1835
+    assert _duration_ms(start, start - timedelta(milliseconds=1)) == 0
+
 
 def test_otlp_protobuf_from_sdk_is_accepted(client, sdk_headers, ui_headers):
     resource = Resource(
         attributes=[
-            KeyValue(key="agentalize.agent.id", value=AnyValue(string_value="otlp-agent")),
-            KeyValue(key="service.name", value=AnyValue(string_value="OTLP Demo Agent")),
+            KeyValue(key="agentalize.agent.id", value=AnyValue(string_value="python-sdk-test-agent")),
+            KeyValue(key="service.name", value=AnyValue(string_value="Python SDK Test Agent")),
             KeyValue(key="deployment.environment", value=AnyValue(string_value="production")),
         ]
     )
@@ -35,4 +46,5 @@ def test_otlp_protobuf_from_sdk_is_accepted(client, sdk_headers, ui_headers):
     )
     assert run.status_code == 200
     assert run.json()["totalTokens"] == 11
-
+    assert run.json()["durationMs"] == 1000
+    assert run.json()["startedAt"].endswith("+00:00")
