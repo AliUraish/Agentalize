@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
-import { Construction } from 'lucide-react'
+import { CircleHelp } from 'lucide-react'
 import { Sidebar } from './components/shell/Sidebar'
 import { TopBar, type TimeRange } from './components/shell/TopBar'
 import { ContentCaptureBanner } from './components/shell/Banner'
@@ -8,10 +8,19 @@ import { EmptyState } from './components/ui/Primitives'
 import { Overview } from './screens/Overview'
 import { Incidents } from './screens/Incidents'
 import { IncidentDetail } from './screens/IncidentDetail'
-import { MemoryExplorer } from './screens/MemoryExplorer'
+import {
+  AgentsScreen,
+  DeploymentsScreen,
+  EvaluationsScreen,
+  FeedbackScreen,
+  RunsScreen,
+  SettingsScreen,
+} from './screens/LiveDataScreens'
+import { InvestigationsScreen } from './screens/Investigations'
 import type { Environment } from './types/domain'
 import { useApiQuery } from './hooks/useApiQuery'
 import type { HealthResponse } from './lib/api'
+import { DEMO_AGENT_NAME } from './lib/demoScope'
 
 export default function App() {
   return (
@@ -51,10 +60,16 @@ function Shell() {
           <Routes>
             <Route path="/" element={<Navigate to="/overview" replace />} />
             <Route path="/overview" element={<Overview environment={environment} range={range} />} />
+            <Route path="/agents" element={<AgentsScreen />} />
+            <Route path="/runs" element={<RunsScreen />} />
+            <Route path="/evaluations" element={<EvaluationsScreen />} />
+            <Route path="/feedback" element={<FeedbackScreen />} />
             <Route path="/incidents" element={<Incidents />} />
             <Route path="/incidents/:incidentId" element={<IncidentDetail />} />
-            <Route path="/memory" element={<MemoryExplorer />} />
-            <Route path="*" element={<NotBuilt />} />
+            <Route path="/investigations" element={<InvestigationsScreen />} />
+            <Route path="/deployments" element={<DeploymentsScreen />} />
+            <Route path="/settings/autonomy" element={<SettingsScreen />} />
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </main>
       </div>
@@ -66,7 +81,7 @@ function Shell() {
 function useBreadcrumb() {
   const location = useLocation()
   const parts = location.pathname.split('/').filter(Boolean)
-  const crumbs: { label: string }[] = [{ label: 'Support Platform' }]
+  const crumbs: { label: string }[] = [{ label: DEMO_AGENT_NAME }]
 
   if (parts[0] === 'incidents') {
     crumbs.push({ label: 'Incidents' })
@@ -79,18 +94,12 @@ function useBreadcrumb() {
   return crumbs
 }
 
-/**
- * §26 says to build one complete story rather than every screen. The remaining
- * routes are declared so navigation is honest about what exists.
- */
-function NotBuilt() {
-  const location = useLocation()
-  const name = location.pathname.split('/').filter(Boolean).join(' / ')
+function NotFound() {
   return (
     <EmptyState
-      icon={Construction}
-      title={`${name} is not part of the demo slice`}
-      detail="This build carries the complete detect → evidence → investigate → fix → verify → remember loop for one incident. The remaining screens are specified in the architecture document but intentionally not built yet."
+      icon={CircleHelp}
+      title="Page not found"
+      detail="This address does not match a dashboard page. Use the navigation to return to live agent data."
     />
   )
 }
