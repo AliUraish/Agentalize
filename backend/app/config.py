@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     run_worker_inline: bool = True
     worker_poll_seconds: float = 1.0
 
-    demo_repository_path: Path = Path("../Agentalize_sdk")
+    demo_repository_path: Path = Path("../../Python_gpt_gemini")
     allow_repository_writes: bool = False
     max_repository_files: int = 300
     max_repository_file_bytes: int = 200_000
@@ -69,4 +69,3 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-
