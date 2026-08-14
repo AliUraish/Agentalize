@@ -1,11 +1,21 @@
+/**
+ * MongoDB dates are UTC. Older API responses omitted the timezone suffix, so
+ * treat timezone-less ISO timestamps as UTC instead of browser-local time.
+ */
+function parseTimestamp(iso: string): Date {
+  const isIsoDateTime = /^\d{4}-\d{2}-\d{2}T/.test(iso)
+  const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(iso)
+  return new Date(isIsoDateTime && !hasTimezone ? `${iso}Z` : iso)
+}
+
 /** All timestamps display in local time; callers pass the ISO string as the title for UTC on hover (§16). */
 export function formatTime(iso: string): string {
-  const d = new Date(iso)
+  const d = parseTimestamp(iso)
   return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
 }
 
 export function formatDateTime(iso: string): string {
-  const d = new Date(iso)
+  const d = parseTimestamp(iso)
   return d.toLocaleString(undefined, {
     month: 'short',
     day: 'numeric',
@@ -15,7 +25,7 @@ export function formatDateTime(iso: string): string {
 }
 
 export function formatRelative(iso: string, now = new Date()): string {
-  const diff = now.getTime() - new Date(iso).getTime()
+  const diff = now.getTime() - parseTimestamp(iso).getTime()
   const min = Math.round(diff / 60000)
   if (min < 1) return 'just now'
   if (min < 60) return `${min}m ago`
