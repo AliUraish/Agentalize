@@ -15,6 +15,7 @@ import {
   type BackendOverview,
 } from '../lib/liveData'
 import type { Agent, Deployment, Incident, Investigation, OverviewKpi } from '../types/domain'
+import { DEMO_AGENT_ID, DEMO_REPOSITORY } from '../lib/demoScope'
 
 export interface DashboardData {
   overview: BackendOverview
@@ -37,13 +38,13 @@ export function useDashboardData(environment: string, hours: number) {
     try {
       const [overview, agentPage, incidentPage, deploymentPage, evaluationPage, feedbackPage, investigationPage] =
         await Promise.all([
-          apiGet<BackendOverview>(`/overview?hours=${hours}${environmentQuery}`, signal),
-          apiGet<Page<BackendAgent>>('/agents?limit=200', signal),
-          apiGet<Page<BackendIncident>>(`/incidents?limit=200${environment ? `&environment=${encodeURIComponent(environment)}` : ''}`, signal),
-          apiGet<Page<BackendDeployment>>(`/deployments?limit=200${environment ? `&environment=${encodeURIComponent(environment)}` : ''}`, signal),
-          apiGet<Page<BackendEvaluation>>('/evaluations?limit=200', signal),
-          apiGet<Page<BackendFeedback>>('/feedback?limit=200', signal),
-          apiGet<Page<BackendInvestigation>>('/investigations?limit=200', signal),
+          apiGet<BackendOverview>(`/overview?hours=${hours}&agent_id=${DEMO_AGENT_ID}&workflow=article_fetch${environmentQuery}`, signal),
+          apiGet<Page<BackendAgent>>(`/agents?limit=200&agent_id=${DEMO_AGENT_ID}`, signal),
+          apiGet<Page<BackendIncident>>(`/incidents?limit=200&agent_id=${DEMO_AGENT_ID}${environment ? `&environment=${encodeURIComponent(environment)}` : ''}`, signal),
+          apiGet<Page<BackendDeployment>>(`/deployments?limit=200&repository=${DEMO_REPOSITORY}${environment ? `&environment=${encodeURIComponent(environment)}` : ''}`, signal),
+          apiGet<Page<BackendEvaluation>>(`/evaluations?limit=200&agent_id=${DEMO_AGENT_ID}&workflow=article_fetch`, signal),
+          apiGet<Page<BackendFeedback>>(`/feedback?limit=200&agent_id=${DEMO_AGENT_ID}&workflow=article_fetch`, signal),
+          apiGet<Page<BackendInvestigation>>(`/investigations?limit=200&agent_id=${DEMO_AGENT_ID}`, signal),
         ])
 
       const incidents = incidentPage.items.map((item) => mapIncident(item, agentPage.items))
@@ -78,4 +79,3 @@ export function useDashboardData(environment: string, hours: number) {
 
   return { data, error, loading, refresh: () => load() }
 }
-
