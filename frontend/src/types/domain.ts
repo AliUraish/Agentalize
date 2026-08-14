@@ -40,7 +40,6 @@ export type AutonomyMode =
 export type WorkMode =
   | 'triage'
   | 'diagnose'
-  | 'retrieve_memory'
   | 'reproduce'
   | 'remediate'
   | 'verify_development'
@@ -201,7 +200,7 @@ export interface Hypothesis {
 
 export interface EvidenceRef {
   id: string
-  type: 'trace' | 'evaluation' | 'feedback' | 'deployment' | 'exception' | 'metric' | 'code' | 'memory'
+  type: 'trace' | 'evaluation' | 'feedback' | 'deployment' | 'exception' | 'metric' | 'code'
   label: string
   detail?: string
   /** Where clicking this evidence should take the user. */
@@ -298,24 +297,6 @@ export interface Verification {
     /** Which direction counts as an improvement. */
     goodDirection: 'up' | 'down'
   }[]
-}
-
-export interface Memory {
-  memoryId: string
-  summary: string
-  detail: string
-  outcome: 'resolved' | 'ineffective' | 'rolled_back' | 'regressed'
-  verified: boolean
-  /** Why vector search returned this, in words a human can check. */
-  similarityReason: string
-  score: number
-  agentId: string
-  tags: string[]
-  repositoryPaths: string[]
-  regressionTest: string | null
-  productionOutcome: string
-  createdAt: string
-  excludedFromRetrieval: boolean
 }
 
 /** §21 — in-app inbox. */
