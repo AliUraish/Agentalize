@@ -145,6 +145,8 @@ async def create_deployment(
 async def overview(
     request: Request,
     environment: str | None = None,
+    agent_id: str | None = None,
+    workflow: str | None = None,
     hours: int = Query(default=24, ge=1, le=24 * 90),
     tenant: TenantContext = Depends(frontend_tenant),
 ) -> JSONResponse:
@@ -157,16 +159,31 @@ async def overview(
     if environment:
         run_query["environment"] = environment
         incident_query["environment"] = environment
+    if agent_id:
+        run_query["agentId"] = agent_id
+        incident_query["agentId"] = agent_id
     runs = await container.store.find_many("runs", run_query, limit=10_000)
     incidents = await container.store.find_many("incidents", incident_query, limit=2_000)
     evaluations = await container.store.find_many(
         "evaluations",
-        tenant_query(tenant.organization_id, tenant.project_id, createdAt={"$gte": since}),
+        tenant_query(
+            tenant.organization_id,
+            tenant.project_id,
+            createdAt={"$gte": since},
+            **({"agent_id": agent_id} if agent_id else {}),
+            **({"metadata.workflow": workflow} if workflow else {}),
+        ),
         limit=10_000,
     )
     feedback = await container.store.find_many(
         "feedback",
-        tenant_query(tenant.organization_id, tenant.project_id, createdAt={"$gte": since}),
+        tenant_query(
+            tenant.organization_id,
+            tenant.project_id,
+            createdAt={"$gte": since},
+            **({"agent_id": agent_id} if agent_id else {}),
+            **({"metadata.workflow": workflow} if workflow else {}),
+        ),
         limit=10_000,
     )
     successful = sum(1 for item in runs if item.get("status") == "ok")
@@ -207,6 +224,7 @@ async def overview(
                     tenant.organization_id,
                     tenant.project_id,
                     status={"$in": ["queued", "running"]},
+                    **({"agentId": agent_id} if agent_id else {}),
                 ),
                 sort=[("createdAt", -1)],
                 limit=10,
@@ -251,12 +269,17 @@ async def upsert_agent(
 @router.get("/agents")
 async def list_agents(
     request: Request,
+    agent_id: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     cursor: str | None = None,
     tenant: TenantContext = Depends(frontend_tenant),
 ) -> JSONResponse:
     store = _container(request).store
-    query = tenant_query(tenant.organization_id, tenant.project_id)
+    query = tenant_query(
+        tenant.organization_id,
+        tenant.project_id,
+        **({"agentId": agent_id} if agent_id else {}),
+    )
     total = await store.count("agents", query)
     offset = _page_offset(cursor)
     items = await store.find_many("agents", query, sort=[("lastSeenAt", -1)], limit=limit, skip=offset)
@@ -384,6 +407,8 @@ async def list_evaluations(
     request: Request,
     passed: bool | None = None,
     metric: str | None = None,
+    agent_id: str | None = None,
+    workflow: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     cursor: str | None = None,
     tenant: TenantContext = Depends(frontend_tenant),
@@ -393,6 +418,10 @@ async def list_evaluations(
         filters["passed"] = passed
     if metric:
         filters["metric"] = metric
+    if agent_id:
+        filters["agent_id"] = agent_id
+    if workflow:
+        filters["metadata.workflow"] = workflow
     return await _list_collection(
         request, tenant, "evaluations", limit=limit, cursor=cursor, sort_field="createdAt", filters=filters
     )
@@ -403,11 +432,13 @@ async def list_feedback(
     request: Request,
     sentiment: str | None = None,
     category: str | None = None,
+    agent_id: str | None = None,
+    workflow: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     cursor: str | None = None,
     tenant: TenantContext = Depends(frontend_tenant),
 ) -> JSONResponse:
-    filters = {key: value for key, value in {"sentiment": sentiment, "category": category}.items() if value}
+    filters = {key: value for key, value in {"sentiment": sentiment, "category": category, "agent_id": agent_id, "metadata.workflow": workflow}.items() if value}
     return await _list_collection(
         request, tenant, "feedback", limit=limit, cursor=cursor, sort_field="createdAt", filters=filters
     )
@@ -524,11 +555,12 @@ async def start_investigation(
 async def list_investigations(
     request: Request,
     investigation_status: str | None = Query(default=None, alias="status"),
+    agent_id: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     cursor: str | None = None,
     tenant: TenantContext = Depends(frontend_tenant),
 ) -> JSONResponse:
-    filters = {"status": investigation_status} if investigation_status else {}
+    filters = {key: value for key, value in {"status": investigation_status, "agentId": agent_id}.items() if value}
     return await _list_collection(
         request, tenant, "investigations", limit=limit, cursor=cursor, sort_field="createdAt", filters=filters
     )
@@ -557,6 +589,75 @@ async def get_investigation(
         "remediations", query, sort=[("createdAt", -1)], limit=100
     )
     return _json(investigation)
+
+
+async def _investigation_repository(
+    investigation_id: str,
+    request: Request,
+    tenant: TenantContext,
+) -> tuple[dict[str, Any], Any]:
+    container = _container(request)
+    investigation = await container.store.find_one(
+        "investigations",
+        tenant_query(
+            tenant.organization_id,
+            tenant.project_id,
+            investigationId=investigation_id,
+        ),
+    )
+    if not investigation:
+        raise HTTPException(status_code=404, detail="Investigation not found")
+    try:
+        root = container.investigations.inspector.validate_root(
+            investigation.get("repositoryPath")
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return investigation, root
+
+
+@router.get("/investigations/{investigation_id}/repository")
+async def investigation_repository(
+    investigation_id: str,
+    request: Request,
+    tenant: TenantContext = Depends(frontend_tenant),
+) -> JSONResponse:
+    investigation, root = await _investigation_repository(
+        investigation_id, request, tenant
+    )
+    inspector = _container(request).investigations.inspector
+    structure = inspector.structure(root)
+    files = [entry for entry in structure if entry["type"] == "file"]
+    return _json(
+        {
+            "investigationId": investigation["investigationId"],
+            "repositoryName": root.name,
+            "repositoryPath": str(root),
+            "files": files,
+            "structure": structure,
+            "fileCount": len(files),
+            "directoryCount": sum(1 for entry in structure if entry["type"] == "directory"),
+        }
+    )
+
+
+@router.get("/investigations/{investigation_id}/repository/file")
+async def investigation_repository_file(
+    investigation_id: str,
+    request: Request,
+    path: str = Query(min_length=1, max_length=1_000),
+    line: int = Query(default=1, ge=1),
+    context: int = Query(default=20, ge=2, le=60),
+    tenant: TenantContext = Depends(frontend_tenant),
+) -> JSONResponse:
+    _, root = await _investigation_repository(investigation_id, request, tenant)
+    try:
+        result = _container(request).investigations.inspector.read_file(
+            root, path, line=line, context=context
+        )
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _json(result)
 
 
 @router.post("/investigations/{investigation_id}/messages")
@@ -684,11 +785,12 @@ async def search_memories(
 async def list_deployments(
     request: Request,
     environment: str | None = None,
+    repository: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     cursor: str | None = None,
     tenant: TenantContext = Depends(frontend_tenant),
 ) -> JSONResponse:
-    filters = {"environment": environment} if environment else {}
+    filters = {key: value for key, value in {"environment": environment, "repository": repository}.items() if value}
     return await _list_collection(
         request, tenant, "deployments", limit=limit, cursor=cursor, sort_field="deployed_at", filters=filters
     )
