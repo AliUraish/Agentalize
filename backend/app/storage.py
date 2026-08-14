@@ -1,14 +1,18 @@
 import asyncio
 import copy
+import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from typing import Any
 
 from pymongo import ASCENDING, DESCENDING, AsyncMongoClient, IndexModel, ReturnDocument
+from pymongo.errors import PyMongoError
 from pymongo.server_api import ServerApi
 
 from app.config import Settings
 from app.core.time import utc_now
+
+logger = logging.getLogger(__name__)
 
 
 def _get_path(document: dict[str, Any], path: str) -> Any:
@@ -500,12 +504,33 @@ class MongoStore(Store):
             await self.database[name].delete_many({})
 
 
+def _mongodb_startup_error(exc: Exception) -> RuntimeError:
+    return RuntimeError(
+        "MongoDB is required (STORAGE_BACKEND=mongodb) but the cluster is unreachable. "
+        "Atlas Network Access must allow this machine's IP, outbound TCP 27017 must not "
+        "be blocked, and the cluster must not be paused. "
+        f"Original error: {exc}"
+    )
+
+
 async def create_store(settings: Settings) -> Store:
-    store: Store
     if settings.resolved_storage_backend == "mongodb":
-        store = MongoStore(settings)
-    else:
-        store = InMemoryStore()
+        store: Store = MongoStore(settings)
+        try:
+            await store.connect()
+            await store.ensure_indexes()
+            logger.info("Connected to MongoDB database %s", settings.mongodb_database)
+            return store
+        except (PyMongoError, OSError) as exc:
+            await store.close()
+            if settings.storage_backend == "mongodb":
+                raise _mongodb_startup_error(exc) from exc
+            logger.warning(
+                "MongoDB is unreachable; falling back to in-memory storage. "
+                "Data will be lost on restart. %s",
+                exc,
+            )
+    store = InMemoryStore()
     await store.connect()
     await store.ensure_indexes()
     return store
