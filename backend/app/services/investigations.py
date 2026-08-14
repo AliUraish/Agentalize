@@ -4,7 +4,7 @@ from app.config import Settings
 from app.core.ids import new_id
 from app.core.time import utc_now
 from app.events import EventBroker
-from app.models.schemas import AgentMode, InvestigationCreate, MemorySearch
+from app.models.schemas import AgentMode, InvestigationCreate
 from app.security import TenantContext
 from app.services.audit import AuditService
 from app.services.jobs import JobService
@@ -47,6 +47,7 @@ class InvestigationService:
             tenant.project_id,
             investigationId=new_id("inv"),
             incidentId=incident["incidentId"],
+            agentId=incident["agentId"],
             mode=payload.mode.value,
             stage="queued",
             status="queued",
@@ -212,24 +213,6 @@ class InvestigationRunner:
         if not incident:
             raise ValueError("Incident not found")
 
-        await self._stage(tenant, investigation_id, "retrieve_memory")
-        memories = await self.memory.search(
-            tenant,
-            MemorySearch(
-                query=f"{incident.get('title', '')} {incident.get('summary', '')}",
-                agent_id=incident.get("agentId"),
-                limit=5,
-            ),
-        )
-        await self.service.add_step(
-            tenant,
-            investigation_id,
-            "retrieve_memory",
-            "result",
-            f"Retrieved {len(memories)} relevant historical memories.",
-            evidence_refs=[item["memoryId"] for item in memories],
-        )
-
         await self._stage(tenant, investigation_id, "diagnose")
         root = self.service.inspector.validate_root(investigation.get("repositoryPath"))
         evidence = self.service.inspector.search(
@@ -245,8 +228,8 @@ class InvestigationRunner:
             details={"repositoryEvidence": [item.__dict__ for item in evidence]},
         )
 
-        ai_result = await self.service.ai.analyze(incident, evidence, memories)
-        diagnosis = ai_result or self._deterministic_diagnosis(incident, evidence, memories)
+        ai_result = await self.service.ai.analyze(incident, evidence, [])
+        diagnosis = ai_result or self._deterministic_diagnosis(incident, evidence)
         hypothesis = new_document(
             tenant.organization_id,
             tenant.project_id,
@@ -291,7 +274,6 @@ class InvestigationRunner:
         result = {
             "hypothesisId": hypothesis["hypothesisId"],
             "remediationId": remediation["remediationId"] if remediation else None,
-            "memoryIds": [item["memoryId"] for item in memories],
             "repositoryEvidenceCount": len(evidence),
         }
         await self.store.update_one(
@@ -362,7 +344,6 @@ class InvestigationRunner:
     def _deterministic_diagnosis(
         incident: dict[str, Any],
         evidence: list[RepositoryEvidence],
-        memories: list[dict[str, Any]],
     ) -> dict[str, Any]:
         if evidence:
             top = evidence[0]
@@ -375,12 +356,10 @@ class InvestigationRunner:
                 "No direct code match was found. The next step is to reproduce the failing run "
                 "using its redacted input and deployed commit."
             )
-        if memories:
-            hypothesis += f" A related verified memory is '{memories[0].get('title', 'previous incident')}'."
         return {
             "hypothesis": hypothesis,
             "confidence": 0.62 if evidence else 0.35,
-            "reasoning_summary": "Based on incident text, scoped repository matches, and verified memory.",
+            "reasoning_summary": "Based on the production fetch signal and scoped Python repository matches.",
             "recommended_test": f"Add a regression test for: {incident.get('title', 'the failing run')}",
             "recommended_change": "Apply the smallest change at the confirmed failing code path.",
             "risk": "medium",
